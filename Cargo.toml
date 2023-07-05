@@ -1,0 +1,22 @@
+[package]
+name = "fn-decorator"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+description = "The crate contains macros for implementing wrapper functions around member or static functions."
+repository = "https://github.com/RoGer2856/fn-decorator.git"
+readme = "README.md"
+keywords = ["decorator", "macro"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+quote = "1.0"
+proc-macro2 = "1.0"
+syn = { version = "2.0", features = ["full"] }
+
+[dev-dependencies]
+tokio = { version = "1.28", features = ["full"] }
+
+[lib]
+proc-macro = true

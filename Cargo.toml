@@ -1,6 +1,6 @@
 [package]
 name = "fn-decorator"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 license = "MIT"
 description = "The crate contains macros for implementing wrapper functions around member or static functions."

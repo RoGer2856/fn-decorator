@@ -4,7 +4,7 @@ The crate contains macros for implementing wrapper functions around member or st
 
 ## Decorator function examples
 
-### Decorating a function without parameters
+### Decorating a function that has no parameters
 ```rust
 use fn_decorator::use_decorator;
 
@@ -24,7 +24,7 @@ fn fn_without_params_decorator() {
 }
 ```
 
-### Decorating a function with parameters
+### Decorating a function that has parameters
 ```rust
 use fn_decorator::use_decorator;
 
@@ -44,7 +44,7 @@ fn decorator_without_params() {
 }
 ```
 
-### Using a decorator function that has a parameter
+### Using a parameterized decorator function
 ```rust
 use fn_decorator::use_decorator;
 

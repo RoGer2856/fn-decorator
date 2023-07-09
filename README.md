@@ -96,6 +96,28 @@ fn decorator_with_param() {
 }
 ```
 
+### Debugging an fn decorator
+Please be aware that the tests does not contain this code, because it produces a compile time error.
+
+```rust
+use fn_decorator::use_decorator;
+
+fn decorator(f: fn() -> i64) -> i64 {
+    f() + 1
+}
+
+#[use_decorator(decorator(), debug)]
+fn get_1() -> i64 {
+    1
+}
+
+#[test]
+fn fn_without_params_decorator() {
+    let result = get_1();
+    assert_eq!(result, 2);
+}
+```
+
 ### Decorating a member function
 ```rust
 use fn_decorator::use_impl_decorator;
@@ -230,28 +252,6 @@ async fn hiding_params_of_async_impl_member_decorator() {
     };
     let result = obj.concat("right".into()).await;
     assert_eq!(result, "left_middle_right");
-}
-```
-
-### Debugging an fn decorator
-Please be aware that the tests does not contain this code, because it produces a compile time error.
-
-```rust
-use fn_decorator::use_decorator;
-
-fn decorator(f: fn() -> i64) -> i64 {
-    f() + 1
-}
-
-#[use_decorator(decorator(), debug)]
-fn get_1() -> i64 {
-    1
-}
-
-#[test]
-fn fn_without_params_decorator() {
-    let result = get_1();
-    assert_eq!(result, 2);
 }
 ```
 

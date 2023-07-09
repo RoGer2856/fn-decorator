@@ -1,6 +1,7 @@
 mod async_decorator;
 mod async_impl_member_decorator;
 mod async_impl_static_member_decorator;
+mod debug_fn_decorator;
 mod decorator_with_param;
 mod decorator_without_params;
 mod fn_without_params_decorator;

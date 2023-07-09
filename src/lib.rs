@@ -81,6 +81,7 @@ impl Parse for HideParametersList {
 }
 
 struct UseDecoratorArg {
+    debug: bool,
     decorator_function_call: DecoratorFunctionCall,
     hide_parameters_list: Option<HideParametersList>,
 }
@@ -89,6 +90,7 @@ impl Parse for UseDecoratorArg {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut hide_parameters_list = None;
         let mut decorator_function_call = None;
+        let mut debug = false;
 
         let mut first_item = true;
 
@@ -99,6 +101,7 @@ impl Parse for UseDecoratorArg {
 
             let input_fork_0 = input.fork();
             let input_fork_1 = input.fork();
+            let input_fork_2 = input.fork();
             if let Ok(parsed) = input_fork_0.parse::<HideParametersList>() {
                 if hide_parameters_list.is_some() {
                     return Err(input.error("at most one hide_parameters list is allowed"));
@@ -113,6 +116,14 @@ impl Parse for UseDecoratorArg {
 
                 decorator_function_call = Some(parsed);
                 input.advance_to(&input_fork_1);
+            } else if let Ok(_) = read_exact_ident("debug", &&input_fork_2) {
+                if debug {
+                    return Err(input.error("exactly one `debug` is allowed"));
+                }
+
+                debug = true;
+
+                input.advance_to(&input_fork_2);
             } else {
                 return Err(
                     input.error("expected decorator function call, or hide_parameters = [...]")
@@ -123,6 +134,7 @@ impl Parse for UseDecoratorArg {
         }
 
         Ok(Self {
+            debug,
             decorator_function_call: decorator_function_call
                 .ok_or_else(|| input.error("exactly one decorator function call is allowed"))?,
             hide_parameters_list,
@@ -239,6 +251,10 @@ fn use_decorator_impl(
             }
         }
     };
+
+    if use_decorator_arg.debug {
+        panic!("Generated code = `{}`", tokens.to_string());
+    }
 
     tokens.into()
 }

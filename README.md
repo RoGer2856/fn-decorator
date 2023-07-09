@@ -2,7 +2,33 @@
 
 The crate contains macros for implementing wrapper functions around member or static functions.
 
-## Decorator function examples
+## Using the `use_decorator`
+
+**Decorator function**
+```rust
+fn decorator(f: fn() -> i64) -> i64 {
+    f() + 1
+}
+```
+
+**Decorating a function**
+```rust
+#[use_decorator(decorator())]
+fn get_1() -> i64 {
+    1
+}
+```
+
+When `get_1()` is called, then `decorator(get_1)` is executed instead. The decorator function can decide whether it calls the received function or not.
+
+There is also a `use_impl_decorator` macro that works in `impl` blocks.
+
+Both macros can have the same parameters:
+* Decorator function call that should be executed. This can contain parameters. See examples for exact usage!
+* `hide_parameters = [...]`: if the decorator function signature does not match the decorated, then this list can be used to hide some parameters from the decorator function.
+* `debug`: when this parameter is given, then the code will generate a compile error with the generated source code. This is useful for debugging purposes.
+
+## Fully working examples
 
 ### Decorating a function that has no parameters
 ```rust
@@ -204,6 +230,28 @@ async fn hiding_params_of_async_impl_member_decorator() {
     };
     let result = obj.concat("right".into()).await;
     assert_eq!(result, "left_middle_right");
+}
+```
+
+### Debugging an fn decorator
+Please be aware that the tests does not contain this code, because it produces a compile time error.
+
+```rust
+use fn_decorator::use_decorator;
+
+fn decorator(f: fn() -> i64) -> i64 {
+    f() + 1
+}
+
+#[use_decorator(decorator(), debug)]
+fn get_1() -> i64 {
+    1
+}
+
+#[test]
+fn fn_without_params_decorator() {
+    let result = get_1();
+    assert_eq!(result, 2);
 }
 ```
 

@@ -56,7 +56,7 @@ impl Parse for HideParameterName {
             if let Some((ident, rest)) = cursor.ident() {
                 Ok((ident.to_string(), rest))
             } else {
-                Err(cursor.error(format!("expected identifier")))
+                Err(cursor.error("expected identifier"))
             }
         })?))
     }
@@ -116,7 +116,7 @@ impl Parse for UseDecoratorArg {
 
                 decorator_function_call = Some(parsed);
                 input.advance_to(&input_fork_1);
-            } else if let Ok(_) = read_exact_ident("debug", &&input_fork_2) {
+            } else if read_exact_ident("debug", &&input_fork_2).is_ok() {
                 if debug {
                     return Err(input.error("exactly one `debug` is allowed"));
                 }
@@ -253,7 +253,7 @@ fn use_decorator_impl(
     };
 
     if use_decorator_arg.debug {
-        panic!("Generated code = `{}`", tokens.to_string());
+        panic!("Generated code = `{}`", tokens);
     }
 
     tokens.into()

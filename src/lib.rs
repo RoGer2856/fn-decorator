@@ -4,15 +4,34 @@ use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens};
 use syn::{
-    parenthesized, parse::Parse, punctuated::Punctuated, Expr, FnArg, ImplItemFn, Pat, Path, Token,
+    bracketed, parenthesized,
+    parse::{discouraged::Speculative, Parse},
+    punctuated::Punctuated,
+    Expr, FnArg, ImplItemFn, Pat, Path, Token,
 };
 
-struct DecoratorArg {
+fn read_exact_ident<'a>(
+    ident_name: &'a str,
+    input: &syn::parse::ParseStream,
+) -> syn::Result<&'a str> {
+    input.step(|cursor| {
+        if let Some((ident, rest)) = cursor.ident() {
+            if ident == ident_name {
+                return Ok((ident, rest));
+            }
+        }
+        Err(cursor.error(format!("expected `{ident_name}`")))
+    })?;
+
+    Ok(ident_name)
+}
+
+struct DecoratorFunctionCall {
     middleware_fn_path: Path,
     middleware_params: Punctuated<Expr, Token![,]>,
 }
 
-impl Parse for DecoratorArg {
+impl Parse for DecoratorFunctionCall {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let middleware_fn_path = input.parse::<Path>()?;
         let content;
@@ -25,6 +44,88 @@ impl Parse for DecoratorArg {
         Ok(Self {
             middleware_fn_path,
             middleware_params,
+        })
+    }
+}
+
+struct HideParameterName(String);
+
+impl Parse for HideParameterName {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(Self(input.step(|cursor| {
+            if let Some((ident, rest)) = cursor.ident() {
+                Ok((ident.to_string(), rest))
+            } else {
+                Err(cursor.error(format!("expected identifier")))
+            }
+        })?))
+    }
+}
+
+struct HideParametersList(Vec<String>);
+
+impl Parse for HideParametersList {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        read_exact_ident("hide_parameters", &input)?;
+        input.parse::<Token![=]>()?;
+        let content;
+        bracketed!(content in input);
+        let parameters = content
+            .parse_terminated(HideParameterName::parse, Token![,])?
+            .into_iter()
+            .map(|param| param.0)
+            .collect();
+
+        Ok(HideParametersList(parameters))
+    }
+}
+
+struct UseDecoratorArg {
+    decorator_function_call: DecoratorFunctionCall,
+    hide_parameters_list: Option<HideParametersList>,
+}
+
+impl Parse for UseDecoratorArg {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut hide_parameters_list = None;
+        let mut decorator_function_call = None;
+
+        let mut first_item = true;
+
+        while !input.is_empty() {
+            if !first_item {
+                input.parse::<Token![,]>()?;
+            }
+
+            let input_fork_0 = input.fork();
+            let input_fork_1 = input.fork();
+            if let Ok(parsed) = input_fork_0.parse::<HideParametersList>() {
+                if hide_parameters_list.is_some() {
+                    return Err(input.error("at most one hide_parameters list is allowed"));
+                }
+
+                hide_parameters_list = Some(parsed);
+                input.advance_to(&input_fork_0);
+            } else if let Ok(parsed) = input_fork_1.parse::<DecoratorFunctionCall>() {
+                if decorator_function_call.is_some() {
+                    return Err(input.error("exactly one decorator function call is allowed"));
+                }
+
+                decorator_function_call = Some(parsed);
+                input.advance_to(&input_fork_1);
+            } else {
+                return Err(
+                    input.error("expected decorator function call, or hide_parameters = [...]")
+                );
+            }
+
+            first_item = false;
+        }
+
+        Ok(Self {
+            decorator_function_call: decorator_function_call
+                .ok_or_else(|| input.error("exactly one decorator function call is allowed"))?,
+            hide_parameters_list,
         })
     }
 }
@@ -48,22 +149,19 @@ fn use_decorator_impl(
     input: TokenStream,
     is_impl_decorator: bool,
 ) -> TokenStream {
-    let decorator_arg: DecoratorArg = syn::parse_macro_input!(arg);
+    let use_decorator_arg: UseDecoratorArg = syn::parse_macro_input!(arg);
 
-    let decorator_fn_path = &decorator_arg.middleware_fn_path;
-    let decorator_fn_params = &decorator_arg.middleware_params;
+    let decorator_fn_path = &use_decorator_arg.decorator_function_call.middleware_fn_path;
+    let decorator_fn_params = &use_decorator_arg.decorator_function_call.middleware_params;
 
     let mut item_impl: ImplItemFn = syn::parse_macro_input!(input);
-    let old_fn_signature = item_impl.sig.clone();
+    let decorated_fn_signature = item_impl.sig.clone();
 
-    let new_fn_name = old_fn_signature.ident.to_string();
-    let new_fn_ident = Ident::new(
-        &("__decorator_original_".to_string() + &new_fn_name),
-        Span::call_site(),
-    );
+    let new_fn_name = decorated_fn_signature.ident.to_string();
+    let new_fn_ident = Ident::new(&(new_fn_name + "_fn_decorator_original"), Span::call_site());
     item_impl.sig.ident = new_fn_ident.clone();
 
-    let fn_param_names: Punctuated<DecoratedFnArgName, Token![,]> = old_fn_signature
+    let fn_param_names: Punctuated<DecoratedFnArgName, Token![,]> = decorated_fn_signature
         .inputs
         .iter()
         .map(|param| match param {
@@ -84,17 +182,61 @@ fn use_decorator_impl(
         quote! {#new_fn_ident}
     };
 
-    let decorator_await = if item_impl.sig.asyncness.is_some() {
-        quote! { .await }
+    let (closure_async, decorator_await) = if item_impl.sig.asyncness.is_some() {
+        (quote! { async }, quote! { .await })
     } else {
-        quote! {}
+        (quote! {}, quote! {})
     };
 
-    let tokens = quote! {
-        #item_impl
+    let tokens = if let Some(hide_parameters_list) = use_decorator_arg.hide_parameters_list {
+        let fn_param_names: Punctuated<Ident, Token![,]> = fn_param_names
+            .iter()
+            .map(|param_name| match param_name {
+                DecoratedFnArgName::Receiver => Ident::new("_self", Span::call_site()),
+                DecoratedFnArgName::Pat(pat) => {
+                    Ident::new(&pat.to_token_stream().to_string(), Span::call_site())
+                }
+            })
+            .collect();
 
-        #old_fn_signature {
-            #decorator_fn_path(#decorator_fn_params #new_fn_pointer, #fn_param_names)#decorator_await
+        let closure_params: Punctuated<&Ident, Token![,]> = fn_param_names
+            .iter()
+            .filter(|param_name| {
+                let ident_str = param_name.to_string();
+                if ident_str == "_self" {
+                    !hide_parameters_list.0.contains(&"self".to_string())
+                } else {
+                    !hide_parameters_list.0.contains(&ident_str)
+                }
+            })
+            .collect();
+
+        let self_redeclaration = if is_impl_decorator {
+            quote! {let _self = self;}
+        } else {
+            quote! {}
+        };
+
+        quote! {
+            #item_impl
+
+            #decorated_fn_signature {
+                #self_redeclaration
+
+                #decorator_fn_path(
+                    #decorator_fn_params
+                    move |#closure_params| #closure_async { #new_fn_pointer(#fn_param_names)#decorator_await },
+                    #closure_params)
+                #decorator_await
+            }
+        }
+    } else {
+        quote! {
+            #item_impl
+
+            #decorated_fn_signature {
+                #decorator_fn_path(#decorator_fn_params #new_fn_pointer, #fn_param_names)#decorator_await
+            }
         }
     };
 

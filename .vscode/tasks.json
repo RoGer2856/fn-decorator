@@ -5,7 +5,9 @@
 			"type": "cargo",
 			"command": "test",
 			"args": [
-				"--release"
+				"--release",
+				"--",
+				"--nocapture",
 			],
 			"problemMatcher": [
 				"$rustc",

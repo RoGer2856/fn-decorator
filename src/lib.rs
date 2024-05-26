@@ -80,13 +80,13 @@ impl Parse for HideParametersList {
     }
 }
 
-struct OverrideReturnType(syn::Path);
+struct OverrideReturnType(syn::Type);
 
 impl Parse for OverrideReturnType {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         read_exact_ident("override_return_type", &input)?;
         input.parse::<Token![=]>()?;
-        let type_path = input.parse::<syn::Path>()?;
+        let type_path = input.parse::<syn::Type>()?;
         Ok(OverrideReturnType(type_path))
     }
 }

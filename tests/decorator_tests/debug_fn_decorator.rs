@@ -10,7 +10,7 @@
 // }
 
 // #[test]
-// fn fn_without_params_decorator() {
+// fn debug_fn_decorator() {
 //     let result = get_1();
 //     assert_eq!(result, 2);
 // }

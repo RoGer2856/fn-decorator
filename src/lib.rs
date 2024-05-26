@@ -80,14 +80,34 @@ impl Parse for HideParametersList {
     }
 }
 
+struct OverrideReturnType(syn::Path);
+
+impl Parse for OverrideReturnType {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        read_exact_ident("override_return_type", &input)?;
+        input.parse::<Token![=]>()?;
+        let type_path = input.parse::<syn::Path>()?;
+        Ok(OverrideReturnType(type_path))
+    }
+}
+
+impl ToTokens for OverrideReturnType {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
+        let output_type = &self.0;
+        tokens.extend(quote! { #output_type });
+    }
+}
+
 struct UseDecoratorArg {
     debug: bool,
     decorator_function_call: DecoratorFunctionCall,
     hide_parameters_list: Option<HideParametersList>,
+    override_return_type: Option<OverrideReturnType>,
 }
 
 impl Parse for UseDecoratorArg {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut override_return_type = None;
         let mut hide_parameters_list = None;
         let mut decorator_function_call = None;
         let mut debug = false;
@@ -102,6 +122,7 @@ impl Parse for UseDecoratorArg {
             let input_fork_0 = input.fork();
             let input_fork_1 = input.fork();
             let input_fork_2 = input.fork();
+            let input_fork_3 = input.fork();
             if let Ok(parsed) = input_fork_0.parse::<HideParametersList>() {
                 if hide_parameters_list.is_some() {
                     return Err(input.error("at most one hide_parameters list is allowed"));
@@ -124,6 +145,13 @@ impl Parse for UseDecoratorArg {
                 debug = true;
 
                 input.advance_to(&input_fork_2);
+            } else if let Ok(parsed) = input_fork_3.parse::<OverrideReturnType>() {
+                if override_return_type.is_some() {
+                    return Err(input.error("at most one override_return_type list is allowed"));
+                }
+
+                override_return_type = Some(parsed);
+                input.advance_to(&input_fork_3);
             } else {
                 return Err(
                     input.error("expected decorator function call, or hide_parameters = [...]")
@@ -138,6 +166,7 @@ impl Parse for UseDecoratorArg {
             decorator_function_call: decorator_function_call
                 .ok_or_else(|| input.error("exactly one decorator function call is allowed"))?,
             hide_parameters_list,
+            override_return_type,
         })
     }
 }
@@ -168,19 +197,34 @@ fn use_decorator_impl(
 
     let mut item_impl: ImplItemFn = syn::parse_macro_input!(input);
     let decorated_fn_signature = item_impl.sig.clone();
+    let wrapper_fn_signature_output =
+        if let Some(override_return_type) = use_decorator_arg.override_return_type {
+            quote! {
+                -> #override_return_type
+            }
+        } else {
+            let output = decorated_fn_signature.output.clone();
+            quote! {
+                #output
+            }
+        };
 
-    let new_fn_name = decorated_fn_signature.ident.to_string();
+    let mut wrapper_fn_signature_without_output = decorated_fn_signature;
+    wrapper_fn_signature_without_output.output = syn::ReturnType::Default;
+
+    let new_fn_name = wrapper_fn_signature_without_output.ident.to_string();
     let new_fn_ident = Ident::new(&(new_fn_name + "_fn_decorator_original"), Span::call_site());
     item_impl.sig.ident = new_fn_ident.clone();
 
-    let fn_param_names: Punctuated<DecoratedFnArgName, Token![,]> = decorated_fn_signature
-        .inputs
-        .iter()
-        .map(|param| match param {
-            FnArg::Receiver(_) => DecoratedFnArgName::Receiver,
-            FnArg::Typed(p) => DecoratedFnArgName::Pat(*p.pat.clone()),
-        })
-        .collect();
+    let fn_param_names: Punctuated<DecoratedFnArgName, Token![,]> =
+        wrapper_fn_signature_without_output
+            .inputs
+            .iter()
+            .map(|param| match param {
+                FnArg::Receiver(_) => DecoratedFnArgName::Receiver,
+                FnArg::Typed(p) => DecoratedFnArgName::Pat(*p.pat.clone()),
+            })
+            .collect();
 
     let decorator_fn_params = if decorator_fn_params.is_empty() {
         quote! {}
@@ -232,7 +276,7 @@ fn use_decorator_impl(
         quote! {
             #item_impl
 
-            #decorated_fn_signature {
+            #wrapper_fn_signature_without_output #wrapper_fn_signature_output {
                 #self_redeclaration
 
                 #decorator_fn_path(
@@ -246,7 +290,7 @@ fn use_decorator_impl(
         quote! {
             #item_impl
 
-            #decorated_fn_signature {
+            #wrapper_fn_signature_without_output #wrapper_fn_signature_output {
                 #decorator_fn_path(#decorator_fn_params #new_fn_pointer, #fn_param_names)#decorator_await
             }
         }

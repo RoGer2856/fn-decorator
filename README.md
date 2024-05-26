@@ -26,6 +26,7 @@ There is also a `use_impl_decorator` macro that works in `impl` blocks.
 Both macros can have the same parameters:
 * Decorator function call that should be executed. This can contain parameters. See examples for exact usage!
 * `hide_parameters = [...]`: if the decorator function signature does not match the decorated, then this list can be used to hide some parameters from the decorator function.
+* `override_return_type = <type>`: if the decorator return type does not match the decorated, then this list can be used to change the return type of the decorated
 * `debug`: when this parameter is given, then the code will generate a compile error with the generated source code. This is useful for debugging purposes.
 
 ## Fully working examples
@@ -394,5 +395,25 @@ impl MyStruct {
 async fn async_impl_member_decorator() {
     let result = MyStruct::double(2).await;
     assert_eq!(result, 5);
+}
+```
+
+### Overriding return type
+```rust
+use fn_decorator::use_decorator;
+
+fn decorator(f: fn() -> i64) -> Result<i64, ()> {
+    Ok(f() + 1)
+}
+
+#[use_decorator(decorator(), override_return_type = Result<i64, ()>)]
+fn get_1() -> i64 {
+    1
+}
+
+#[test]
+fn fn_without_params_decorator() {
+    let result = get_1();
+    assert_eq!(result, Ok(2));
 }
 ```

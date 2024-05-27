@@ -230,20 +230,27 @@ fn use_decorator_impl(
     let decorator_fn_params = &use_decorator_arg.decorator_function_call.middleware_params;
 
     let mut item_impl: ImplItemFn = syn::parse_macro_input!(input);
-    let decorated_fn_signature = item_impl.sig.clone();
+    let ImplItemFn {
+        attrs: _decorated_fn_attrs,
+        vis: decorated_fn_vis,
+        defaultness: _decorated_fn_defaultness,
+        sig: decorated_fn_sig,
+        block: _decorated_fn_block,
+    } = item_impl.clone();
+
     let wrapper_fn_signature_output =
         if let Some(override_return_type) = use_decorator_arg.override_return_type {
             quote! {
                 -> #override_return_type
             }
         } else {
-            let output = decorated_fn_signature.output.clone();
+            let output = decorated_fn_sig.output.clone();
             quote! {
                 #output
             }
         };
 
-    let mut wrapper_fn_signature_without_output = decorated_fn_signature;
+    let mut wrapper_fn_signature_without_output = decorated_fn_sig.clone();
     wrapper_fn_signature_without_output.output = syn::ReturnType::Default;
 
     let new_fn_name = wrapper_fn_signature_without_output.ident.to_string();
@@ -323,7 +330,7 @@ fn use_decorator_impl(
         quote! {
             #item_impl
 
-            #wrapper_fn_signature_without_output #wrapper_fn_signature_output {
+            #decorated_fn_vis #wrapper_fn_signature_without_output #wrapper_fn_signature_output {
                 #self_redeclaration
 
                 #decorator_fn_path(
@@ -337,7 +344,7 @@ fn use_decorator_impl(
         quote! {
             #item_impl
 
-            #wrapper_fn_signature_without_output #wrapper_fn_signature_output {
+            #decorated_fn_vis #wrapper_fn_signature_without_output #wrapper_fn_signature_output {
                 #decorator_fn_path(#decorator_fn_params #new_fn_pointer, #fn_param_names)#decorator_await
             }
         }

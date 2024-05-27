@@ -17,3 +17,4 @@ mod hiding_self_param_in_impl_member_decorator;
 mod impl_member_decorator;
 mod impl_static_member_decorator;
 mod overriding_return_type;
+mod visibility;

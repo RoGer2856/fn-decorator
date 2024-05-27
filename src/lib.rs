@@ -48,9 +48,9 @@ impl Parse for DecoratorFunctionCall {
     }
 }
 
-struct HideParameterName(String);
+struct ParameterName(String);
 
-impl Parse for HideParameterName {
+impl Parse for ParameterName {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         Ok(Self(input.step(|cursor| {
             if let Some((ident, rest)) = cursor.ident() {
@@ -71,13 +71,36 @@ impl Parse for HideParametersList {
         let content;
         bracketed!(content in input);
         let parameters = content
-            .parse_terminated(HideParameterName::parse, Token![,])?
+            .parse_terminated(ParameterName::parse, Token![,])?
             .into_iter()
             .map(|param| param.0)
             .collect();
 
         Ok(HideParametersList(parameters))
     }
+}
+
+struct ExactParametersList(Vec<String>);
+
+impl Parse for ExactParametersList {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        read_exact_ident("exact_parameters", &input)?;
+        input.parse::<Token![=]>()?;
+        let content;
+        bracketed!(content in input);
+        let parameters = content
+            .parse_terminated(ParameterName::parse, Token![,])?
+            .into_iter()
+            .map(|param| param.0)
+            .collect();
+
+        Ok(ExactParametersList(parameters))
+    }
+}
+
+enum ParametersOverride {
+    Exact(ExactParametersList),
+    Hide(HideParametersList),
 }
 
 struct OverrideReturnType(syn::Type);
@@ -101,14 +124,14 @@ impl ToTokens for OverrideReturnType {
 struct UseDecoratorArg {
     debug: bool,
     decorator_function_call: DecoratorFunctionCall,
-    hide_parameters_list: Option<HideParametersList>,
+    parameters_override: Option<ParametersOverride>,
     override_return_type: Option<OverrideReturnType>,
 }
 
 impl Parse for UseDecoratorArg {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut override_return_type = None;
-        let mut hide_parameters_list = None;
+        let mut parameter_override = None;
         let mut decorator_function_call = None;
         let mut debug = false;
 
@@ -124,11 +147,22 @@ impl Parse for UseDecoratorArg {
             let input_fork_2 = input.fork();
             let input_fork_3 = input.fork();
             if let Ok(parsed) = input_fork_0.parse::<HideParametersList>() {
-                if hide_parameters_list.is_some() {
-                    return Err(input.error("at most one hide_parameters list is allowed"));
+                if parameter_override.is_some() {
+                    return Err(
+                        input.error("only one hide_parameters or exact_parameters list is allowed")
+                    );
                 }
 
-                hide_parameters_list = Some(parsed);
+                parameter_override = Some(ParametersOverride::Hide(parsed));
+                input.advance_to(&input_fork_0);
+            } else if let Ok(parsed) = input_fork_0.parse::<ExactParametersList>() {
+                if parameter_override.is_some() {
+                    return Err(
+                        input.error("only one hide_parameters or exact_parameters list is allowed")
+                    );
+                }
+
+                parameter_override = Some(ParametersOverride::Exact(parsed));
                 input.advance_to(&input_fork_0);
             } else if let Ok(parsed) = input_fork_1.parse::<DecoratorFunctionCall>() {
                 if decorator_function_call.is_some() {
@@ -165,7 +199,7 @@ impl Parse for UseDecoratorArg {
             debug,
             decorator_function_call: decorator_function_call
                 .ok_or_else(|| input.error("exactly one decorator function call is allowed"))?,
-            hide_parameters_list,
+            parameters_override: parameter_override,
             override_return_type,
         })
     }
@@ -244,7 +278,7 @@ fn use_decorator_impl(
         (quote! {}, quote! {})
     };
 
-    let tokens = if let Some(hide_parameters_list) = use_decorator_arg.hide_parameters_list {
+    let tokens = if let Some(parameters_override) = use_decorator_arg.parameters_override {
         let fn_param_names: Punctuated<Ident, Token![,]> = fn_param_names
             .iter()
             .map(|param_name| match param_name {
@@ -255,17 +289,30 @@ fn use_decorator_impl(
             })
             .collect();
 
-        let closure_params: Punctuated<&Ident, Token![,]> = fn_param_names
-            .iter()
-            .filter(|param_name| {
-                let ident_str = param_name.to_string();
-                if ident_str == "_self" {
-                    !hide_parameters_list.0.contains(&"self".to_string())
-                } else {
-                    !hide_parameters_list.0.contains(&ident_str)
-                }
-            })
-            .collect();
+        let closure_params = match parameters_override {
+            ParametersOverride::Hide(hide_parameters_list) => fn_param_names
+                .iter()
+                .filter(|param_name| {
+                    let ident_str = param_name.to_string();
+                    if ident_str == "_self" {
+                        !hide_parameters_list.0.contains(&"self".to_string())
+                    } else {
+                        !hide_parameters_list.0.contains(&ident_str)
+                    }
+                })
+                .collect::<Punctuated<&Ident, Token![,]>>(),
+            ParametersOverride::Exact(exact_parameters_list) => fn_param_names
+                .iter()
+                .filter(|param_name| {
+                    let ident_str = param_name.to_string();
+                    if ident_str == "_self" {
+                        exact_parameters_list.0.contains(&"self".to_string())
+                    } else {
+                        exact_parameters_list.0.contains(&ident_str)
+                    }
+                })
+                .collect::<Punctuated<&Ident, Token![,]>>(),
+        };
 
         let self_redeclaration = if is_impl_decorator {
             quote! {let _self = self;}

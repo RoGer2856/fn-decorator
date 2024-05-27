@@ -192,6 +192,133 @@ async fn async_decorator() {
 }
 ```
 
+### Specifying exact parameter list of an async decorator using with an async function
+```rust
+use std::future::Future;
+
+use fn_decorator::use_decorator;
+
+async fn decorator<FutureType: Future<Output = String>>(
+    middle: String,
+    f: impl FnOnce(String) -> FutureType,
+    right: String,
+) -> String {
+    let right = middle + &right;
+    f(right).await
+}
+
+#[use_decorator(decorator("_middle_".to_string()), exact_parameters = [right])]
+async fn concat(left: String, right: String) -> String {
+    left + &right
+}
+
+#[tokio::test]
+async fn hiding_params_of_async_fn_decorator() {
+    let result = concat("left".into(), "right".into()).await;
+    assert_eq!(result, "left_middle_right");
+}
+```
+
+### Specifying exact parameter list of an async decorator using with an async member function
+```rust
+use std::future::Future;
+
+use fn_decorator::use_impl_decorator;
+
+async fn decorator<'a, FutureType: Future<Output = &'a String>>(
+    middle: String,
+    f: impl FnOnce(&'a mut MyStruct) -> FutureType,
+    receiver: &'a mut MyStruct,
+) -> &'a String {
+    receiver.left.push_str(&middle);
+    f(receiver).await
+}
+
+struct MyStruct {
+    left: String,
+}
+
+impl MyStruct {
+    #[use_impl_decorator(decorator("_middle_".to_string()), exact_parameters = [self])]
+    async fn concat(&mut self, right: String) -> &String {
+        self.left.push_str(&right);
+        &self.left
+    }
+}
+
+#[tokio::test]
+async fn hiding_params_of_async_impl_member_decorator() {
+    let mut obj = MyStruct {
+        left: "left".into(),
+    };
+    let result = obj.concat("right".into()).await;
+    assert_eq!(result, "left_middle_right");
+}
+```
+
+### Specifying exact parameter list of a decorator using with a function
+```rust
+use fn_decorator::use_decorator;
+
+fn decorator(middle: String, f: impl FnOnce(String) -> String, right: String) -> String {
+    let right = middle + &right;
+    f(right)
+}
+
+#[use_decorator(decorator("_middle_".to_string()), exact_parameters = [right])]
+fn concat(left: String, right: String) -> String {
+    left + &right
+}
+
+#[test]
+fn hiding_params_of_fn_decorator() {
+    let result = concat("left".into(), "right".into());
+    assert_eq!(result, "left_middle_right");
+}
+```
+
+### Specifying exact parameter list of a decorator using with a member function
+```rust
+use fn_decorator::use_impl_decorator;
+
+fn decorator(middle: String, f: impl FnOnce(&MyStruct) -> String, receiver: &MyStruct) -> String {
+    let new_struct = MyStruct {
+        left: receiver.left.clone() + &middle,
+    };
+    f(&new_struct)
+}
+
+struct MyStruct {
+    left: String,
+}
+
+impl MyStruct {
+    #[use_impl_decorator(decorator("_middle_".to_string()), exact_parameters = [self])]
+    fn concat(&self, right: String) -> String {
+        self.left.clone() + &right
+    }
+}
+
+#[test]
+fn hiding_params_of_impl_member_decorator() {
+    let obj = MyStruct {
+        left: "left".into(),
+    };
+    let result = obj.concat("right".into());
+    assert_eq!(result, "left_middle_right");
+}
+```
+
+#[test]
+fn hiding_self_param_in_impl_member_decorator() {
+    let obj = MyStruct {
+        left: "left".into(),
+    };
+    let result = obj.concat("right".into());
+    assert_eq!(result, "left_middle_right");
+}
+```
+
 ### Hiding parameters of an async function from a decorator
 ```rust
 use std::future::Future;

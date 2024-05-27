@@ -25,7 +25,8 @@ There is also a `use_impl_decorator` macro that works in `impl` blocks.
 
 Both macros can have the same parameters:
 * Decorator function call that should be executed. This can contain parameters. See examples for exact usage!
-* `hide_parameters = [...]`: if the decorator function signature does not match the decorated, then this list can be used to hide some parameters from the decorator function.
+* `hide_parameters = [...]`: if the decorator function signature does not match the decorated, then this list can be used to hide some parameters from the decorator function. Be aware that `hide_parameters` and `exact_parameters` cannot be given the same time.
+* `exact_parameters = [...]`: if the decorator function signature does not match the decorated, then this list can be used to specified the exact parameters to be passed to the decorator function. Be aware that `hide_parameters` and `exact_parameters` cannot be given the same time.
 * `override_return_type = <type>`: if the decorator return type does not match the decorated, then this list can be used to change the return type of the decorated
 * `debug`: when this parameter is given, then the code will generate a compile error with the generated source code. This is useful for debugging purposes.
 

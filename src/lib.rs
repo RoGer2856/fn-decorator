@@ -188,7 +188,7 @@ impl Parse for UseDecoratorArg {
                 input.advance_to(&input_fork_3);
             } else {
                 return Err(
-                    input.error("expected decorator function call, or hide_parameters = [...]")
+                    input.error("expected decorator function call or `hide_parameters` or `exact_parameters` or `override_return_type`")
                 );
             }
 

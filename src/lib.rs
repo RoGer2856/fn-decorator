@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 #![allow(clippy::redundant_clone)]
 
 use proc_macro::TokenStream;
